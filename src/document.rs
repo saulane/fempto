@@ -8,6 +8,7 @@ use std::io::Write;
 pub struct Document{
     rows: Vec<Row>,
     pub file_name: Option<String>,
+    pub dirty: bool,
 }
 
 impl Document{
@@ -20,57 +21,69 @@ impl Document{
         Ok(Self{
             rows,
             file_name: Some(filename.to_string()),
+            dirty: false,
         })
     }
 
     pub fn insert(&mut self,at: &Position, c: char){
         if c == '\n'{
             self.insert_new_line(at);
-        }else{
-            if at.y == self.len(){
-                let mut row = Row::default();
-                row.insert(0, c);
-                self.rows.push(row);
-    
-            }else if at.y < self.len(){
-                let row = self.rows.get_mut(at.y).unwrap();
-                row.insert(at.x, c);
-            }
+            return;
+        }
+
+        if at.y == self.len(){
+            let mut row = Row::default();
+            row.insert(0, c);
+            self.rows.push(row);
+
+        }else if at.y < self.len(){
+            let row = self.rows.get_mut(at.y).unwrap();
+            row.insert(at.x, c);
         }
     }
 
     pub fn insert_new_line(&mut self, at: &Position){
-        if at.x == self.rows[at.y].len(){
-            let row = Row::default();
-            self.rows.insert(at.y, row);
-        }else{
-            let row: &str = &self.rows.get_mut(at.y).unwrap().string.split_off(at.x);
-            self.rows.get_mut(at.y).unwrap().update_len();
-
-            self.rows.insert(at.y.saturating_add(1), Row::from(row));
+        if at.y > self.len(){
+            return;
         }
+
+
+        if at.y == self.len(){
+            self.rows.push(Row::default());
+            return;
+        }
+
+        let new_row = self.rows.get_mut(at.y).unwrap().split(at.x);
+        self.rows.insert(at.y.saturating_add(1), new_row)
     }
 
     pub fn delete(&mut self, at: &Position){
         if at.y >= self.len(){
             return;
         }
-        let row = self.rows.get_mut(at.y).unwrap();
-        row.delete(at.x);
+        // let row = self.rows.get_mut(at.y).unwrap();
+        // row.delete(at.x);
+
+        if at.x == self.row(at.y).unwrap().len() && at.y < self.len().saturating_sub(1){
+            let next_row = self.rows.remove(at.y.saturating_add(1));
+            let row = self.rows.get_mut(at.y).unwrap();
+            row.append(&next_row);
+        }else{
+            let row = self.rows.get_mut(at.y).unwrap();
+            row.delete(at.x);
+        }
     }
 
-    pub fn save(&self){
-        match &self.file_name{
-            Some(name) => {
-                let mut file = File::create(name).expect("Failed to save file");
-                for i in &self.rows{
-                    writeln!(file, "{}", i.string).expect("Failed saving to file");
-                }
-            },
-            None => {
-                todo!();
+    pub fn save(&self) -> Result<(), std::io::Error>{
+        if let Some(file_name) = &self.file_name{
+            let mut file = File::create(file_name)?;
+            for row in &self.rows{
+                file.write_all(row.as_bytes())?;
+                file.write_all(b"\n")?;
             }
         }
+
+        Ok(())
     }
 
     pub fn row(&self, index:usize) -> Option<&Row>{

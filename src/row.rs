@@ -11,7 +11,7 @@ impl From<&str> for Row {
     fn from(slice : &str) -> Self{
         let mut row = Self{
             string: String::from(slice),
-            len: 0, 
+            len: slice.graphemes(true).count(), 
         };
 
         row.update_len();
@@ -59,15 +59,24 @@ impl Row{
             return;
         }else{
             let mut result: String = self.string[..].graphemes(true).take(at).collect();
-            let remainder: String = self.string[..].graphemes(true).skip(at + 1).collect();
+            let remainder: String = self.string[..].graphemes(true).skip(at.saturating_add(1)).collect();
             result.push_str(&remainder);
             self.string = result;
         }
         self.update_len();
     }
 
-    pub fn cut(&mut self, at: usize){
-        self.string.truncate(at);
+    pub fn split(&mut self, at: usize) -> Self{
+        let begginning: String = self.string[..].graphemes(true).take(at).collect();
+        let remainder: String = self.string[..].graphemes(true).skip(at).collect();
+        self.string = begginning;
+        self.update_len();
+        Self::from(&remainder[..])
+    }
+
+    pub fn append(&mut self, new: &Self){
+        self.string = format!("{}{}", self.string, new.string);
+        self.update_len();
     }
 
     pub fn len(&self) -> usize{
@@ -80,5 +89,9 @@ impl Row{
 
     pub fn update_len(&mut self){
         self.len = self.string[..].graphemes(true).count();
+    }
+
+    pub fn as_bytes(&self) -> &[u8]{
+        self.string.as_bytes()
     }
 }

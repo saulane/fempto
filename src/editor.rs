@@ -38,7 +38,7 @@ pub struct Editor {
     cursor_position: Position,
     offset: Position,
     document: Document,
-    status_message: StatusMessage
+    status_message: StatusMessage,
 }
 
 impl Editor {
@@ -56,7 +56,7 @@ impl Editor {
         }
     }
     pub fn default() -> Self {
-        let mut initial_status = String::from("HELP: Ctrl-Q = quit");
+        let mut initial_status = String::from("HELP: Ctrl-S = save | Ctrl-Q = quit");
         let args: Vec<String> = env::args().collect();
         let document = if args.len() > 1{
             let file_name = &args[1];
@@ -136,15 +136,45 @@ impl Editor {
         }
     }
 
+    fn save(&mut self){
+        if self.document.file_name.is_none(){
+            let new_name = self.prompt("Save as: ", |_,_,_|{}).unwrap_or(None);
+            if new_name.is_none(){
+                self.status_message = StatusMessage::from("Save aborted".to_string());
+                return;
+            }
+            self.document.file_name = new_name;
+        }
+
+
+        if self.document.save().is_ok(){
+            self.status_message = StatusMessage::from("File saved succesfully".to_string());
+            if self.document.dirty{
+                self.document.dirty = false;
+            }
+        }else{
+            self.status_message = StatusMessage::from("Error writing file".to_string());
+        }
+    }
+
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
         let pressed_key = Terminal::read_key()?;
         match pressed_key {
-            Key::Ctrl('q') => self.should_quit = true,
-            Key::Ctrl('s') => {
-                self.document.save();
-                self.status_message = StatusMessage::from("File saved to disk".to_string());
+            Key::Ctrl('q') => {
+                if self.document.dirty{
+                    match self.prompt("Quit without saving ? (Y/n) : ", |_,_,_|{} )?{
+                        Some(s) if s == "y" || s == "Y" => {
+                            self.should_quit = true;
+                        },
+                        _ => (),
+                    }
+                }else{
+                    self.should_quit = true;
+                }
             },
+            Key::Ctrl('s') => self.save(),
             Key::Char(c) => {
+                self.document.dirty = true;
                 self.document.insert(&self.cursor_position, c);
                 if c == '\n'{
                     self.move_cursor(Key::Home);
@@ -290,6 +320,37 @@ impl Editor {
                 println!("~\r");
             }
         }
+    }
+
+    fn prompt<C>(&mut self, prompt: &str, callback: C) -> Result<Option<String>, std::io::Error> where C: Fn(&mut Self, Key, &String) {
+        let mut result = String::new();
+        loop{
+            self.status_message = StatusMessage::from(format!("{}{}", prompt, result));
+            self.refresh_screen()?;
+            let key = Terminal::read_key()?;
+            match key{
+                Key::Char('\n') => break,
+                Key::Char(c) =>{
+                    if !c.is_control(){
+                        result.push(c);
+                    }
+                },
+                Key::Backspace => result.truncate(result.len() -1),
+                Key::Esc => {
+                    result.truncate(0);
+                    return Ok(None)
+                },
+                _ => (),
+            }
+
+            callback(self, key, &result);
+        }
+        self.status_message = StatusMessage::from(String::new());
+        if result.is_empty(){
+            return Ok(None)
+        }
+
+        Ok(Some(result))
     }
 }
 
