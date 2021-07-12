@@ -140,6 +140,26 @@ impl Editor {
         let pressed_key = Terminal::read_key()?;
         match pressed_key {
             Key::Ctrl('q') => self.should_quit = true,
+            Key::Ctrl('s') => {
+                self.document.save();
+                self.status_message = StatusMessage::from("File saved to disk".to_string());
+            },
+            Key::Char(c) => {
+                self.document.insert(&self.cursor_position, c);
+                if c == '\n'{
+                    self.move_cursor(Key::Home);
+                    self.move_cursor(Key::Down);
+                }else{
+                    self.move_cursor(Key::Right);
+                }
+            },
+            Key::Delete => self.document.delete(&self.cursor_position),
+            Key::Backspace => {
+                if self.cursor_position.x > 0 || self.cursor_position.y > 0 {
+                    self.move_cursor(Key::Left);
+                    self.document.delete(&self.cursor_position);
+                }
+            },
             Key::Up
             | Key::Down
             | Key::Left
@@ -175,7 +195,7 @@ impl Editor {
     fn move_cursor(&mut self, key: Key) {
         let terminal_height = self.terminal.size().height as usize;
         let Position { mut y, mut x } = self.cursor_position;
-        let size = self.terminal.size();
+        // let size = self.terminal.size();
         let height = self.document.len();
         let mut width = if let Some(row) = self.document.row(y){
             row.len()
@@ -275,5 +295,5 @@ impl Editor {
 
 fn die(e: std::io::Error) {
     Terminal::clear_screen();
-    panic!(e);
+    panic!("{}", e);
 }
